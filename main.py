@@ -7,6 +7,12 @@ import scipy.stats as si
 from scipy import optimize
 import statsmodels.api as sm
 
+from functions.plot import *
+from functions.correlation import *
+from functions.co_integration import *
+from functions.spread import *
+from functions.trading_signals import *
+
 # https://wrds-www.wharton.upenn.edu/pages/wrds-research/applications/python-replications/historical-sp-500-index-constituents/
 
 def get_dates(date, duration, duration_type):
@@ -59,6 +65,8 @@ def get_data(start_date, end_date):
     sp500ccm : DataFrame
         The S&P 500 data with company names and additional descriptive variables.
     """
+    
+    print('Extracting data...')
     
     # Extract S&P 500 data from CRSP
     sp500_query = f"""
@@ -164,13 +172,39 @@ def calculate_return_stock(permno_SP500, start_date, end_date):
     return return_pivoted[return_pivoted.index >= start_date]
 
 
-def start(date='2023-12-31', duration=10, duration_type='years', correlation_treshold=0.8, z_score_treshold=0.3):
-    start_date, end_date = get_dates(date, duration, duration_type)
-    sp500ccm = get_data(start_date, end_date)
+
+
+def start(date='2023-12-31', duration=10, duration_type='years', correlation_threshold=0.8, cointegration_threshold=0.05, z_score_threshold=0.3):
     
+    # Get the start and end dates based on the input parameters
+    start_date, end_date = get_dates(date, duration, duration_type)
+    
+    # Get the S&P 500 data with company names and additional descriptive variables
+    sp500ccm = get_data(start_date, end_date)
     sp500ccm_current = sp500ccm[sp500ccm['date'] == sp500ccm['date'].max()]
     permno_SP500 = sp500ccm_current[['comnam', 'permno']]
+    
+    # Calculate the stock returns for the S&P 500 companies
     stock_prices_SP500 = calculate_return_stock(permno_SP500, start_date, end_date)
+    
+    # Plot pairs of stocks
+    # plot_pair(stock_prices_SP500.columns[0], stock_prices_SP500.columns[1], stock_prices_SP500)
+    
+    # Calculate the daily returns
+    returns = stock_prices_SP500.pct_change()
+    returns.iloc[0] = 0
+    
+    # Example usage:
+    # stock_symbol = 'prc_MICROSOFT_CORP'
+    # plot_stock_and_returns(stock_prices_SP500, returns, stock_symbol)
+    
+    pairs = add_correlation(returns)
+    pairs_correlated = select_high_correlation(pairs, threshold=correlation_threshold)
+    pairs_correlated = add_test_cointegration_pairs(stock_prices_SP500, pairs_correlated)
+    pairs_correlated_cointegrated = select_high_cointegration(pairs_correlated, threshold=cointegration_threshold)
+    
+    spreads = calculate_spreads_for_pairs(stock_prices_SP500, pairs_correlated_cointegrated)
+    z_scores_for_spreads = calculate_z_scores_for_spreads(spreads)
     
     
 if __name__ == '__main__':
